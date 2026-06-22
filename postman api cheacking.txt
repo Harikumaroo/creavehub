@@ -1,0 +1,56 @@
+-----------REGISTER URL------------------------------------------------
+1) http://127.0.0.1:8000/api/register/mobile/ ------> first url for the registration to enter the number get otp for the numbr 
+
+
+2) http://127.0.0.1:8000/api/register/verify-otp/   ----> this is second url for verify the otp received for the number                                 
+
+3) http://127.0.0.1:8000/api/register/complete/    -----> this third url for registration complete the balance details and get the access token and refreshtoken from there 
+
+-------------LOGIN URL-------------------------------------------------
+4)  http://127.0.0.1:8000/api/login/mobile/  ----> first url to login with the register number 
+
+5) http://127.0.0.1:8000/api/profile/(GET)  ---- > second url to view the profile get the accestoken received on the complted registration process tokens and add it on the header section postman authorization bearer token and get the profile 
+
+6) http://127.0.0.1:8000/api/devices/(GET) ----> url to cheack the device where logged in there 
+
+___________categories testing url_________________________________
+1) http://127.0.0.1:8000/api/v1/categories/   --------> get it will return the the json 
+return : {
+    "success": true,
+    "message": "Categories fetched successfully",
+    "data": []
+}                  
+
+____________restaurant url___________________________________________
+1) GET http://127.0.0.1:8000/api/v1/restaurants/ -------> get method to cheac the restaurant  it will return the json : {
+    "success": true,
+    "message": "Restaurants fetched successfully",
+    "data": [],
+    "meta": {
+        "pagination": {
+            "page": 1,
+            "page_size": 20,
+            "total_count": 0,
+            "total_pages": 0,
+            "has_next": false,
+            "has_previous": false
+        }
+    }
+}   
+
+___________banners testing url ___________________________________
+1) GET http://127.0.0.1:8000/api/v1/banners/ -----> get method for cheacking the banners it return a json : {
+    "success": true,
+    "message": "Banners fetched successfully",
+    "data": []
+}
+
+__________offers testing url______________________________________
+1) GET http://127.0.0.1:8000/api/v1/offers/ -------> get the offers form db return a json : {
+    "success": true,
+    "message": "Offers fetched successfully",
+    "data": []
+}
+
+_________post testing for all_________________________________________
+1) category : json: 

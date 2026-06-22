@@ -1,0 +1,1 @@
+"""CraveHub core package."""

@@ -1,0 +1,1368 @@
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { useAuthCtx } from '../store/authStore'
+import { dashboardApi } from '../api/dashboardApi'
+import { profileApi } from '../api/profileApi'
+import RestaurantView from '../components/RestaurantView'
+
+/* ── Design tokens ─────────────────────────────────────────── */
+const C = {
+  saffron: '#E8621A', amber: '#F5A623', tomato: '#D94F2B',
+  cream: '#FDF6EE',   warm: '#FFF8F2', charcoal: '#1C1410',
+  bark: '#3D2B1F',    mocha: '#7C4D2F', sand: '#F0E0CC',
+  sage: '#5C7A4E',    cardBg: '#FFFFFF', border: '#F0E4D4',
+  muted: '#9B7B60',   bg: '#FAF3EC',
+}
+const font = "'Plus Jakarta Sans', system-ui, sans-serif"
+
+/* ── Skeleton ──────────────────────────────────────────────── */
+function Skel({ w = '100%', h = 16, r = 8, mb = 0 }) {
+  return (
+    <div style={{
+      width: w, height: h, borderRadius: r, marginBottom: mb,
+      background: `linear-gradient(90deg,${C.sand} 25%,#FDE8CC 50%,${C.sand} 75%)`,
+      backgroundSize: '200% 100%', animation: 'shimmer 1.4s infinite',
+    }} />
+  )
+}
+
+function Section({ children, style = {} }) {
+  return <div style={{ background: C.cardBg, marginBottom: 8, ...style }}>{children}</div>
+}
+
+function SectionHead({ title, sub, emoji, onSeeAll }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', padding: '18px 16px 10px' }}>
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {emoji && <span style={{ fontSize: 18 }}>{emoji}</span>}
+          <span style={{ fontSize: 16, fontWeight: 800, color: C.charcoal, fontFamily: font }}>{title}</span>
+        </div>
+        {sub && <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{sub}</div>}
+      </div>
+      {onSeeAll && (
+        <button onClick={onSeeAll} style={{ background: 'none', border: 'none', color: C.saffron, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: font }}>
+          See All →
+        </button>
+      )}
+    </div>
+  )
+}
+
+/* ── Header ─────────────────────────────────────────────────── */
+function Header({ user, notifCount, onNotif, onCart, cartCount, onAI }) {
+  const hour = new Date().getHours()
+  const greeting = hour < 12 ? '🌤️ Good morning' : hour < 17 ? '☀️ Good afternoon' : '🌙 Good evening'
+  const firstName = user?.full_name?.split(' ')[0] || 'Foodie'
+  return (
+    <div style={{ background: C.cardBg, borderBottom: `1px solid ${C.border}`, padding: '14px 16px 12px', position: 'sticky', top: 0, zIndex: 50 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ width: 32, height: 32, borderRadius: 10, background: `linear-gradient(135deg,${C.saffron},${C.tomato})`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <span style={{ fontSize: 16 }}>🍽️</span>
+          </div>
+          <div>
+            <div style={{ fontSize: 10, color: C.muted, fontWeight: 600, fontFamily: font }}>CRAVEHUB</div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: C.charcoal, fontFamily: font }}>
+              Food Delivery <span style={{ fontSize: 10, color: C.saffron }}>●</span>
+            </div>
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* AI Chat button */}
+          <button onClick={onAI} style={{ position: 'relative', background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: `linear-gradient(135deg,${C.amber}20,${C.saffron}20)`, border: `1px solid ${C.amber}40`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span style={{ fontSize: 17 }}>🤖</span>
+            </div>
+          </button>
+          {/* Cart */}
+          <button onClick={onCart} style={{ position: 'relative', background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: C.warm, display: 'flex', alignItems: 'center', justifyContent: 'center', border: `1px solid ${C.border}` }}>
+              <span style={{ fontSize: 17 }}>🛒</span>
+            </div>
+            {cartCount > 0 && (
+              <span style={{ position: 'absolute', top: -2, right: -2, background: C.tomato, color: '#fff', borderRadius: 99, fontSize: 8, fontWeight: 800, padding: '1px 4px', minWidth: 14, textAlign: 'center' }}>{cartCount}</span>
+            )}
+          </button>
+          {/* Notif */}
+          <button onClick={onNotif} style={{ position: 'relative', background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: C.warm, display: 'flex', alignItems: 'center', justifyContent: 'center', border: `1px solid ${C.border}` }}>
+              <span style={{ fontSize: 17 }}>🔔</span>
+            </div>
+            {notifCount > 0 && (
+              <span style={{ position: 'absolute', top: -2, right: -2, background: C.tomato, color: '#fff', borderRadius: 99, fontSize: 8, fontWeight: 800, padding: '1px 4px', minWidth: 14, textAlign: 'center' }}>{notifCount}</span>
+            )}
+          </button>
+          {/* Avatar */}
+          <div style={{ width: 36, height: 36, borderRadius: 10, background: `linear-gradient(135deg,${C.amber},${C.saffron})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 14, color: '#fff', fontFamily: font }}>
+            {firstName[0]?.toUpperCase() || 'F'}
+          </div>
+        </div>
+      </div>
+      <div>
+        <div style={{ fontSize: 20, fontWeight: 900, color: C.charcoal, fontFamily: font, letterSpacing: -0.3 }}>
+          {greeting}, {firstName}!
+        </div>
+        <div style={{ fontSize: 12, color: C.muted, marginTop: 2, fontFamily: font }}>What are you craving today?</div>
+      </div>
+    </div>
+  )
+}
+
+/* ── Search ──────────────────────────────────────────────────── */
+function SearchBar({ onSearch }) {
+  const [q, setQ] = useState('')
+  const submit = (e) => { e.preventDefault(); if (q.trim()) onSearch(q.trim()) }
+  return (
+    <form onSubmit={submit} style={{ padding: '12px 16px', background: C.cardBg }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: C.warm, border: `1.5px solid ${C.border}`, borderRadius: 14, padding: '0 14px', height: 48 }}>
+        <span style={{ fontSize: 15, color: C.muted }}>🔍</span>
+        <input
+          value={q} onChange={e => setQ(e.target.value)}
+          placeholder="Search food, restaurants, cuisines..."
+          style={{ flex: 1, background: 'none', border: 'none', outline: 'none', fontSize: 13, color: C.charcoal, fontFamily: font }}
+        />
+        {q && <button type="button" onClick={() => setQ('')} style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', fontSize: 16, padding: 0 }}>✕</button>}
+        <button type="submit" style={{ background: `linear-gradient(135deg,${C.saffron},${C.tomato})`, border: 'none', borderRadius: 10, width: 32, height: 32, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <span style={{ fontSize: 13, color: '#fff' }}>→</span>
+        </button>
+      </div>
+    </form>
+  )
+}
+
+/* ── Banner Carousel ─────────────────────────────────────────── */
+const BANNER_FALLBACKS = [
+  { gradient: `linear-gradient(135deg,#E8621A,#D94F2B)`, emoji: '🍗', title: '50% OFF', sub: 'On your first order', code: 'CRAVE50', desc: 'Limited time offer' },
+  { gradient: `linear-gradient(135deg,#5C7A4E,#3D6B35)`, emoji: '🥗', title: 'FREE DELIVERY', sub: 'On orders above ₹199', code: 'FREEDEL', desc: 'Today only' },
+  { gradient: `linear-gradient(135deg,#7C4D2F,#5A3420)`, emoji: '☕', title: 'MORNING SPECIAL', sub: 'Up to 40% OFF', code: 'MORNING40', desc: 'Before 11am' },
+]
+
+function BannerCarousel({ banners, loading }) {
+  const [cur, setCur] = useState(0)
+  const slides = banners.length > 0
+    ? banners.slice(0, 3).map((b, i) => ({
+        gradient: BANNER_FALLBACKS[i % 3].gradient,
+        emoji: BANNER_FALLBACKS[i % 3].emoji,
+        title: b.title || BANNER_FALLBACKS[i % 3].title,
+        sub: b.subtitle || BANNER_FALLBACKS[i % 3].sub,
+        code: b.coupon_code ? `CODE: ${b.coupon_code}` : BANNER_FALLBACKS[i % 3].code,
+        desc: BANNER_FALLBACKS[i % 3].desc,
+        image: b.image,
+      }))
+    : BANNER_FALLBACKS
+
+  useEffect(() => {
+    const t = setInterval(() => setCur(c => (c + 1) % slides.length), 3500)
+    return () => clearInterval(t)
+  }, [slides.length])
+
+  if (loading) return <div style={{ margin: '12px 16px' }}><Skel h={148} r={18} /></div>
+
+  return (
+    <div style={{ padding: '12px 16px', background: C.cardBg }}>
+      <div style={{ borderRadius: 18, overflow: 'hidden', position: 'relative', height: 148 }}>
+        {slides.map((s, i) => (
+          <div key={i} style={{
+            position: 'absolute', inset: 0, background: s.gradient,
+            opacity: i === cur ? 1 : 0, transition: 'opacity 0.5s ease',
+            display: 'flex', alignItems: 'stretch',
+          }}>
+            <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle at 80% 20%, rgba(255,255,255,0.12) 0%, transparent 60%)', pointerEvents: 'none' }} />
+            <div style={{ flex: 1, padding: '18px 20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', position: 'relative', zIndex: 2 }}>
+              <div>
+                <div style={{ display: 'inline-block', background: 'rgba(255,255,255,0.2)', borderRadius: 99, padding: '3px 10px', marginBottom: 8 }}>
+                  <span style={{ color: '#fff', fontSize: 10, fontWeight: 800, letterSpacing: 0.8, fontFamily: font }}>{s.desc.toUpperCase()}</span>
+                </div>
+                <div style={{ fontSize: 26, fontWeight: 900, color: '#fff', lineHeight: 1.1, fontFamily: font, letterSpacing: -0.5 }}>{s.title}</div>
+                <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.85)', marginTop: 4, fontFamily: font }}>{s.sub}</div>
+              </div>
+              <div style={{ display: 'inline-flex', background: 'rgba(255,255,255,0.18)', border: '1.5px dashed rgba(255,255,255,0.55)', borderRadius: 99, padding: '5px 12px', width: 'fit-content' }}>
+                <span style={{ color: '#fff', fontSize: 11, fontWeight: 800, fontFamily: font }}>{s.code}</span>
+              </div>
+            </div>
+            <div style={{ width: 110, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              {s.image ? <img src={s.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.85 }} />
+                : <div style={{ fontSize: 60, filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.2))' }}>{s.emoji}</div>}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'center', gap: 5, marginTop: 10 }}>
+        {slides.map((_, i) => (
+          <button key={i} onClick={() => setCur(i)} style={{ width: i === cur ? 20 : 6, height: 6, borderRadius: 99, background: i === cur ? C.saffron : C.sand, border: 'none', padding: 0, cursor: 'pointer', transition: 'all 0.3s' }} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/* ── Services Hub ────────────────────────────────────────────── */
+const SERVICES = [
+  { emoji: '🛵', label: 'Food Delivery', bg: `linear-gradient(135deg,#FFF0E6,#FFE4CC)`, border: '#F5C9A0' },
+  { emoji: '🛒', label: 'Instamart', bg: `linear-gradient(135deg,#EFF9ED,#D9F0D5)`, border: '#A8D8A0' },
+  { emoji: '🍽️', label: 'Dining Out', bg: `linear-gradient(135deg,#FFF8E6,#FFEFC0)`, border: '#F0D080' },
+  { emoji: '🎂', label: 'Party Orders', bg: `linear-gradient(135deg,#FDE8F0,#FAD0E0)`, border: '#F0A0C0' },
+  { emoji: '🎁', label: 'Gifts', bg: `linear-gradient(135deg,#EDE8FF,#D8D0FF)`, border: '#B0A0E8' },
+  { emoji: '🍱', label: 'Catering', bg: `linear-gradient(135deg,#E8F4FF,#CCDFFF)`, border: '#A0BFEF' },
+]
+
+function ServiceHub({ sectors, loading, onService }) {
+  const items = sectors?.length > 0 ? sectors.map(s => ({
+    emoji: s.emoji,
+    label: s.name,
+    bg: `linear-gradient(135deg,${s.bg_gradient_start},${s.bg_gradient_end})`,
+    border: s.border_color,
+    route: s.route
+  })) : SERVICES;
+
+  if (loading) return (
+    <Section style={{ padding: '0 0 16px' }}>
+      <SectionHead title="What do you need?" emoji="✨" />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, padding: '0 16px' }}>
+        {[...Array(6)].map((_, i) => <Skel key={i} h={80} r={16} />)}
+      </div>
+    </Section>
+  )
+
+  return (
+    <Section style={{ padding: '0 0 16px' }}>
+      <SectionHead title="What do you need?" emoji="✨" />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, padding: '0 16px' }}>
+        {items.map((s, i) => (
+          <button key={i} onClick={() => onService?.(s.label, s.route)}
+            style={{ background: s.bg, border: `1.5px solid ${s.border}`, borderRadius: 16, padding: '12px 8px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, transition: 'transform 0.15s' }}
+            onMouseDown={e => e.currentTarget.style.transform = 'scale(0.96)'}
+            onMouseUp={e => e.currentTarget.style.transform = 'scale(1)'}
+            onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+          >
+            <span style={{ fontSize: 26 }}>{s.emoji}</span>
+            <span style={{ fontSize: 10, fontWeight: 700, color: C.charcoal, fontFamily: font, textAlign: 'center', lineHeight: 1.3 }}>{s.label}</span>
+          </button>
+        ))}
+      </div>
+    </Section>
+  )
+}
+
+/* ── Category Pills ──────────────────────────────────────────── */
+const CAT_FALLBACKS = [
+  { id: 1, name: 'Biryani', emoji: '🍛' }, { id: 2, name: 'Pizza', emoji: '🍕' },
+  { id: 3, name: 'Burgers', emoji: '🍔' }, { id: 4, name: 'South Indian', emoji: '🥘' },
+  { id: 5, name: 'Chinese', emoji: '🥢' }, { id: 6, name: 'Desserts', emoji: '🍰' },
+  { id: 7, name: 'Healthy', emoji: '🥗' }, { id: 8, name: 'Beverages', emoji: '🧃' },
+  { id: 9, name: 'Sandwiches', emoji: '🥪' }, { id: 10, name: 'Breakfast', emoji: '🥞' },
+]
+
+function CategoryRow({ categories, loading, onSelect }) {
+  const [active, setActive] = useState(null)
+  const items = categories.length > 0 ? categories : CAT_FALLBACKS
+
+  if (loading) return (
+    <Section>
+      <SectionHead title="What's on your mind?" emoji="🤔" />
+      <div style={{ display: 'flex', gap: 10, padding: '0 16px 16px', overflowX: 'auto' }}>
+        {[...Array(6)].map((_, i) => <Skel key={i} w={70} h={80} r={16} />)}
+      </div>
+    </Section>
+  )
+
+  return (
+    <Section>
+      <SectionHead title="What's on your mind?" emoji="🤔" />
+      <div style={{ display: 'flex', gap: 10, padding: '0 16px 16px', overflowX: 'auto', scrollbarWidth: 'none' }}>
+        {items.slice(0, 12).map((c, i) => {
+          const isActive = active === (c.id || i)
+          return (
+            <button key={c.id || i} onClick={() => { setActive(isActive ? null : (c.id || i)); onSelect?.(c) }}
+              style={{ flexShrink: 0, background: 'none', border: 'none', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 7 }}>
+              <div style={{
+                width: 62, height: 62, borderRadius: 18,
+                background: isActive ? `linear-gradient(135deg,${C.saffron},${C.tomato})` : C.warm,
+                border: `2px solid ${isActive ? C.saffron : C.border}`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', transition: 'all 0.2s',
+                boxShadow: isActive ? `0 4px 16px rgba(232,98,26,0.3)` : 'none',
+              }}>
+                {c.image ? <img src={c.image} alt={c.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  : <span style={{ fontSize: 26 }}>{c.emoji || CAT_FALLBACKS[i % CAT_FALLBACKS.length].emoji}</span>}
+              </div>
+              <span style={{ fontSize: 10, fontWeight: 700, color: isActive ? C.saffron : C.charcoal, fontFamily: font, whiteSpace: 'nowrap', maxWidth: 64, overflow: 'hidden', textOverflow: 'ellipsis', transition: 'color 0.2s' }}>
+                {c.name}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+    </Section>
+  )
+}
+
+/* ── Restaurant Card ─────────────────────────────────────────── */
+function RestaurantCard({ r, compact = false, onClick }) {
+  const [pressed, setPressed] = useState(false)
+  const addr = r.address
+  const ratingColor = parseFloat(r.rating) >= 4.5 ? '#2E8B57' : parseFloat(r.rating) >= 4 ? C.sage : C.muted
+
+  return (
+    <div
+      onClick={() => onClick?.(r)}
+      onMouseDown={() => setPressed(true)}
+      onMouseUp={() => setPressed(false)}
+      onMouseLeave={() => setPressed(false)}
+      onTouchStart={() => setPressed(true)}
+      onTouchEnd={() => setPressed(false)}
+      style={{
+        width: compact ? 188 : '100%', flexShrink: compact ? 0 : undefined,
+        background: C.cardBg, borderRadius: 18, overflow: 'hidden', cursor: 'pointer',
+        border: `1px solid ${C.border}`,
+        transform: pressed ? 'scale(0.97)' : 'scale(1)',
+        transition: 'transform 0.15s ease, box-shadow 0.2s ease',
+        boxShadow: pressed ? 'none' : '0 2px 16px rgba(92,42,15,0.08)',
+        marginBottom: compact ? 0 : 10,
+      }}
+    >
+      <div style={{ height: compact ? 110 : 150, position: 'relative', overflow: 'hidden', background: C.sand }}>
+        {r.cover_image
+          ? <img src={r.cover_image} alt={r.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 48 }}>🍽️</div>}
+        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(28,20,16,0.55) 0%, transparent 55%)' }} />
+        <div style={{ position: 'absolute', top: 8, left: 8, background: r.is_open ? 'rgba(46,139,87,0.92)' : 'rgba(178,34,34,0.92)', color: '#fff', fontSize: 9, fontWeight: 800, padding: '3px 8px', borderRadius: 20, fontFamily: font, letterSpacing: 0.5 }}>
+          {r.is_open ? 'OPEN' : 'CLOSED'}
+        </div>
+        {r.is_featured && (
+          <div style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(232,98,26,0.92)', color: '#fff', fontSize: 9, fontWeight: 800, padding: '3px 8px', borderRadius: 20, fontFamily: font }}>⭐ FEATURED</div>
+        )}
+      </div>
+      <div style={{ padding: compact ? '10px 10px 12px' : '12px 14px 14px' }}>
+        <div style={{ fontSize: compact ? 13 : 14, fontWeight: 800, color: C.charcoal, marginBottom: 3, fontFamily: font, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</div>
+        {!compact && addr?.city && (
+          <div style={{ fontSize: 11, color: C.muted, marginBottom: 8, fontFamily: font }}>📍 {addr.city}</div>
+        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 3, background: `${ratingColor}15`, borderRadius: 7, padding: '3px 7px' }}>
+            <span style={{ color: ratingColor, fontSize: 10 }}>★</span>
+            <span style={{ fontSize: 11, fontWeight: 800, color: ratingColor, fontFamily: font }}>{r.rating}</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 3, color: C.muted }}>
+            <span style={{ fontSize: 11 }}>⏱</span>
+            <span style={{ fontSize: 10, fontFamily: font }}>{r.average_delivery_time}m</span>
+          </div>
+          {parseFloat(r.delivery_fee) === 0
+            ? <span style={{ fontSize: 10, color: C.sage, fontWeight: 700, fontFamily: font }}>Free delivery</span>
+            : <span style={{ fontSize: 10, color: C.muted, fontFamily: font }}>₹{r.delivery_fee} del</span>}
+          {r.is_pure_veg && <span style={{ fontSize: 10, color: C.sage, fontWeight: 700, border: `1px solid ${C.sage}`, borderRadius: 4, padding: '1px 5px', fontFamily: font }}>VEG</span>}
+        </div>
+        {!compact && r.minimum_order_amount > 0 && (
+          <div style={{ fontSize: 10, color: C.muted, marginTop: 5, fontFamily: font }}>Min. order ₹{r.minimum_order_amount}</div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/* ── Offer Strip ─────────────────────────────────────────────── */
+function OfferStrip({ offers, loading }) {
+  if (!loading && offers.length === 0) return null
+  return (
+    <Section style={{ padding: '0 0 16px' }}>
+      <SectionHead title="Today's Deals" emoji="🏷️" />
+      <div style={{ display: 'flex', gap: 10, padding: '0 16px', overflowX: 'auto', scrollbarWidth: 'none' }}>
+        {loading ? [...Array(3)].map((_, i) => <Skel key={i} w={150} h={60} r={12} />)
+          : offers.map(o => (
+            <div key={o.id} style={{ flexShrink: 0, background: `linear-gradient(135deg,${C.warm},#FFF0E0)`, border: `1.5px dashed ${C.amber}`, borderRadius: 14, padding: '10px 14px', minWidth: 150 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: C.saffron, fontFamily: font, marginBottom: 2 }}>🏷️ {o.coupon_code}</div>
+              <div style={{ fontSize: 10, color: C.mocha, fontFamily: font, lineHeight: 1.4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 130 }}>{o.title}</div>
+            </div>
+          ))}
+      </div>
+    </Section>
+  )
+}
+
+/* ── Mood Bar ────────────────────────────────────────────────── */
+const MOODS = [
+  { emoji: '😊', label: 'Happy', col: '#F59E0B' }, { emoji: '🎉', label: 'Party', col: '#EC4899' },
+  { emoji: '💪', label: 'Healthy', col: '#10B981' }, { emoji: '😔', label: 'Comfort', col: '#8B5CF6' },
+  { emoji: '❤️', label: 'Romantic', col: '#EF4444' }, { emoji: '🌙', label: 'Late Night', col: '#6366F1' },
+]
+
+function MoodBar({ onMood }) {
+  const [sel, setSel] = useState(null)
+  return (
+    <Section style={{ padding: '0 0 16px' }}>
+      <SectionHead title="What's your mood?" sub="We'll suggest the perfect meal" emoji="✨" />
+      <div style={{ display: 'flex', gap: 8, padding: '0 16px', overflowX: 'auto', scrollbarWidth: 'none' }}>
+        {MOODS.map((m, i) => (
+          <button key={i} onClick={() => { setSel(i); onMood?.(m) }}
+            style={{ flexShrink: 0, border: `1.5px solid ${sel === i ? m.col : C.border}`, background: sel === i ? `${m.col}18` : C.warm, borderRadius: 99, padding: '8px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, transition: 'all 0.2s' }}>
+            <span style={{ fontSize: 16 }}>{m.emoji}</span>
+            <span style={{ fontSize: 11.5, fontWeight: 700, color: sel === i ? m.col : C.charcoal, fontFamily: font }}>{m.label}</span>
+          </button>
+        ))}
+      </div>
+    </Section>
+  )
+}
+
+/* ── AI Chat Panel ───────────────────────────────────────────── */
+function AIChatPanel({ onClose }) {
+  const [msgs, setMsgs] = useState([{ role: 'assistant', content: "Hey! 🍽️ I'm your CraveHub food assistant. Ask me for recommendations, deals, or help finding the perfect meal!" }])
+  const [input, setInput] = useState('')
+  const [loading, setLoading] = useState(false)
+  const endRef = useRef(null)
+
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [msgs])
+
+  const send = async () => {
+    const msg = input.trim()
+    if (!msg || loading) return
+    setInput('')
+    const history = msgs.map(m => ({ role: m.role, content: m.content }))
+    setMsgs(prev => [...prev, { role: 'user', content: msg }])
+    setLoading(true)
+    try {
+      const res = await dashboardApi.sendChatMessage({ message: msg, history })
+      const reply = res.data?.data?.reply || "I'm here to help! Try asking for food recommendations 🍕"
+      setMsgs(prev => [...prev, { role: 'assistant', content: reply }])
+    } catch {
+      setMsgs(prev => [...prev, { role: 'assistant', content: "Something went wrong. Try asking again! 😊" }])
+    } finally { setLoading(false) }
+  }
+
+  const quickReplies = ['Recommend something', 'Veg options', 'Best deals today', 'Fast delivery']
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 300 }}>
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(28,20,16,0.5)', backdropFilter: 'blur(4px)' }} />
+      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, maxWidth: 500, margin: '0 auto', background: C.cardBg, borderRadius: '22px 22px 0 0', height: '75vh', display: 'flex', flexDirection: 'column' }}>
+        {/* Handle */}
+        <div style={{ padding: '10px 0 0', display: 'flex', justifyContent: 'center' }}>
+          <div style={{ width: 36, height: 4, borderRadius: 99, background: C.sand }} />
+        </div>
+        {/* Header */}
+        <div style={{ padding: '12px 20px 14px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ width: 40, height: 40, borderRadius: 12, background: `linear-gradient(135deg,${C.amber},${C.saffron})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>🤖</div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 15, fontWeight: 800, color: C.charcoal, fontFamily: font }}>CraveHub AI</div>
+            <div style={{ fontSize: 11, color: C.sage, fontFamily: font }}>● Online · Powered by AI</div>
+          </div>
+          <button onClick={onClose} style={{ background: C.warm, border: `1px solid ${C.border}`, borderRadius: 10, width: 32, height: 32, cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+        </div>
+        {/* Messages */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {msgs.map((m, i) => (
+            <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
+              <div style={{
+                maxWidth: '80%', padding: '10px 14px', borderRadius: m.role === 'user' ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
+                background: m.role === 'user' ? `linear-gradient(135deg,${C.saffron},${C.tomato})` : C.warm,
+                border: m.role === 'assistant' ? `1px solid ${C.border}` : 'none',
+                color: m.role === 'user' ? '#fff' : C.charcoal,
+                fontSize: 13, fontFamily: font, lineHeight: 1.5,
+              }}>
+                {m.content}
+              </div>
+            </div>
+          ))}
+          {loading && (
+            <div style={{ display: 'flex', gap: 4, padding: '10px 14px', background: C.warm, borderRadius: '18px 18px 18px 4px', width: 'fit-content', border: `1px solid ${C.border}` }}>
+              {[0, 1, 2].map(i => <div key={i} style={{ width: 6, height: 6, borderRadius: '50%', background: C.muted, animation: `bounce 1s ${i * 0.15}s infinite` }} />)}
+            </div>
+          )}
+          <div ref={endRef} />
+        </div>
+        {/* Quick replies */}
+        <div style={{ padding: '8px 16px 0', display: 'flex', gap: 8, overflowX: 'auto', scrollbarWidth: 'none' }}>
+          {quickReplies.map((q, i) => (
+            <button key={i} onClick={() => { setInput(q); setTimeout(() => send(), 100) }}
+              style={{ flexShrink: 0, background: C.warm, border: `1px solid ${C.border}`, borderRadius: 99, padding: '6px 12px', fontSize: 11, fontWeight: 600, color: C.mocha, cursor: 'pointer', fontFamily: font, whiteSpace: 'nowrap' }}>
+              {q}
+            </button>
+          ))}
+        </div>
+        {/* Input */}
+        <div style={{ padding: '10px 16px 24px', borderTop: `1px solid ${C.border}`, display: 'flex', gap: 8, marginTop: 8 }}>
+          <input
+            value={input} onChange={e => setInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && send()}
+            placeholder="Ask me anything about food..."
+            style={{ flex: 1, background: C.warm, border: `1.5px solid ${C.border}`, borderRadius: 12, padding: '10px 14px', fontSize: 13, color: C.charcoal, fontFamily: font, outline: 'none' }}
+          />
+          <button onClick={send} disabled={!input.trim() || loading}
+            style={{ background: input.trim() ? `linear-gradient(135deg,${C.saffron},${C.tomato})` : C.sand, border: 'none', borderRadius: 12, width: 44, height: 44, cursor: input.trim() ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, transition: 'all 0.2s' }}>
+            ➤
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ── Cart Drawer with Razorpay ───────────────────────────────── */
+function CartDrawer({ open, onClose, cart, onUpdate, onRemove, onPlaceOrder, onPayWithRazorpay }) {
+  const [payMode, setPayMode] = useState('cod') // 'cod' | 'razorpay'
+
+  if (!open) return null
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 200 }}>
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(28,20,16,0.6)', backdropFilter: 'blur(4px)' }} />
+      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, maxWidth: 500, margin: '0 auto', background: C.cardBg, borderRadius: '22px 22px 0 0', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ padding: '10px 0 0', display: 'flex', justifyContent: 'center' }}>
+          <div style={{ width: 36, height: 4, borderRadius: 99, background: C.sand }} />
+        </div>
+        <div style={{ padding: '12px 20px 14px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div style={{ fontSize: 17, fontWeight: 800, color: C.charcoal, fontFamily: font }}>🛒 Your Cart</div>
+            <div style={{ fontSize: 11, color: C.muted, fontFamily: font }}>{cart?.item_count || 0} item{(cart?.item_count || 0) !== 1 ? 's' : ''}</div>
+          </div>
+          <button onClick={onClose} style={{ background: C.warm, border: `1px solid ${C.border}`, borderRadius: 10, width: 32, height: 32, cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px' }}>
+          {!cart || cart.item_count === 0 ? (
+            <div style={{ textAlign: 'center', padding: '40px 0' }}>
+              <div style={{ fontSize: 48, marginBottom: 12 }}>🛒</div>
+              <div style={{ fontSize: 14, color: C.muted, fontFamily: font }}>Your cart is empty</div>
+              <div style={{ fontSize: 12, color: C.muted, marginTop: 6, fontFamily: font }}>Add items from restaurants to get started</div>
+            </div>
+          ) : cart.items.map(item => (
+            <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderBottom: `1px solid ${C.border}` }}>
+              <div style={{ width: 50, height: 50, borderRadius: 12, background: C.sand, overflow: 'hidden', flexShrink: 0 }}>
+                {item.menu_item_image
+                  ? <img src={item.menu_item_image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22 }}>🍽️</div>}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: C.charcoal, fontFamily: font, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.menu_item_name}</div>
+                <div style={{ fontSize: 12, color: C.saffron, fontWeight: 700, fontFamily: font }}>₹{item.price_at_purchase}</div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <button onClick={() => item.quantity === 1 ? onRemove(item.id) : onUpdate(item.id, item.quantity - 1)}
+                  style={{ width: 26, height: 26, borderRadius: 8, background: C.warm, border: `1px solid ${C.border}`, cursor: 'pointer', fontSize: 14, fontWeight: 800, color: C.saffron, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>-</button>
+                <span style={{ fontSize: 13, fontWeight: 800, color: C.charcoal, fontFamily: font, minWidth: 16, textAlign: 'center' }}>{item.quantity}</span>
+                <button onClick={() => onUpdate(item.id, item.quantity + 1)}
+                  style={{ width: 26, height: 26, borderRadius: 8, background: `linear-gradient(135deg,${C.saffron},${C.tomato})`, border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 800, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+              </div>
+            </div>
+          ))}
+        </div>
+        {cart && cart.item_count > 0 && (
+          <div style={{ padding: '16px 20px 28px', borderTop: `1px solid ${C.border}` }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+              <span style={{ fontSize: 12, color: C.muted, fontFamily: font }}>Subtotal</span>
+              <span style={{ fontSize: 12, fontWeight: 600, color: C.charcoal, fontFamily: font }}>₹{Number(cart.subtotal).toFixed(2)}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+              <span style={{ fontSize: 12, color: C.muted, fontFamily: font }}>Delivery fee</span>
+              <span style={{ fontSize: 12, fontWeight: 600, color: cart.delivery_fee === 0 ? C.sage : C.charcoal, fontFamily: font }}>{cart.delivery_fee === 0 ? 'FREE' : `₹${cart.delivery_fee}`}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 14, paddingTop: 8, borderTop: `1px solid ${C.border}` }}>
+              <span style={{ fontSize: 14, fontWeight: 800, color: C.charcoal, fontFamily: font }}>Total</span>
+              <span style={{ fontSize: 14, fontWeight: 800, color: C.saffron, fontFamily: font }}>₹{Number(cart.grand_total).toFixed(2)}</span>
+            </div>
+            {/* Payment mode selector */}
+            <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+              {[{ id: 'cod', label: '💵 Cash on Delivery' }, { id: 'razorpay', label: '💳 Pay Online' }].map(m => (
+                <button key={m.id} onClick={() => setPayMode(m.id)}
+                  style={{ flex: 1, padding: '9px 8px', borderRadius: 12, border: `2px solid ${payMode === m.id ? C.saffron : C.border}`, background: payMode === m.id ? `${C.saffron}10` : C.warm, cursor: 'pointer', fontSize: 11, fontWeight: 700, color: payMode === m.id ? C.saffron : C.charcoal, fontFamily: font, transition: 'all 0.2s' }}>
+                  {m.label}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => payMode === 'cod' ? onPlaceOrder('cod') : onPayWithRazorpay()}
+              style={{ width: '100%', background: `linear-gradient(135deg,${C.saffron},${C.tomato})`, border: 'none', borderRadius: 14, padding: '14px', color: '#fff', fontSize: 14, fontWeight: 800, cursor: 'pointer', fontFamily: font, boxShadow: `0 4px 20px rgba(232,98,26,0.35)` }}>
+              {payMode === 'cod' ? `Place Order → ₹${Number(cart.grand_total).toFixed(2)}` : `Pay ₹${Number(cart.grand_total).toFixed(2)} Online →`}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/* ── Order Tracking ──────────────────────────────────────────── */
+function TrackingView({ order, onClose }) {
+  const [tracking, setTracking] = useState(null)
+  const [progress, setProgress] = useState(0)
+  const STEPS = [
+    { key: 'pending', label: 'Order Placed', emoji: '✅' },
+    { key: 'confirmed', label: 'Confirmed', emoji: '🍳' },
+    { key: 'preparing', label: 'Preparing', emoji: '👨‍🍳' },
+    { key: 'out_for_delivery', label: 'On the way', emoji: '🛵' },
+    { key: 'delivered', label: 'Delivered', emoji: '🎉' },
+  ]
+  const statusIdx = STEPS.findIndex(s => s.key === order?.status)
+  const curStep = statusIdx >= 0 ? statusIdx : 0
+
+  useEffect(() => {
+    if (!order?.id) return
+    dashboardApi.getTracking(order.id).then(r => r.data?.success && setTracking(r.data.data)).catch(() => {})
+    const target = (curStep / (STEPS.length - 1)) * 100
+    const t = setTimeout(() => setProgress(target), 300)
+    return () => clearTimeout(t)
+  }, [order?.id, curStep])
+
+  if (!order) return null
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 300, background: C.bg, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+      <div style={{ background: `linear-gradient(135deg,${C.saffron},${C.tomato})`, padding: '52px 20px 24px', position: 'relative', flexShrink: 0 }}>
+        <button onClick={onClose} style={{ position: 'absolute', top: 52, left: 16, background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: 10, width: 36, height: 36, cursor: 'pointer', fontSize: 18, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>←</button>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 36, marginBottom: 8 }}>{STEPS[curStep]?.emoji || '📦'}</div>
+          <div style={{ fontSize: 20, fontWeight: 900, color: '#fff', fontFamily: font }}>{STEPS[curStep]?.label || 'Processing'}</div>
+          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.85)', marginTop: 4, fontFamily: font }}>Order #{String(order.id).slice(0, 8).toUpperCase()}</div>
+          {order.estimated_delivery_time && (
+            <div style={{ marginTop: 10, display: 'inline-block', background: 'rgba(255,255,255,0.2)', borderRadius: 99, padding: '6px 16px' }}>
+              <span style={{ color: '#fff', fontSize: 12, fontWeight: 700, fontFamily: font }}>⏱ Est. {order.estimated_delivery_time} min</span>
+            </div>
+          )}
+        </div>
+      </div>
+      <div style={{ flex: 1, padding: '20px 20px 32px' }}>
+        <div style={{ background: C.cardBg, borderRadius: 18, padding: '20px', marginBottom: 14, border: `1px solid ${C.border}` }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: C.charcoal, fontFamily: font, marginBottom: 16 }}>Order Progress</div>
+          <div style={{ position: 'relative' }}>
+            <div style={{ position: 'absolute', top: 16, left: 16, right: 16, height: 3, background: C.sand, borderRadius: 99, zIndex: 0 }}>
+              <div style={{ height: '100%', width: `${progress}%`, background: `linear-gradient(90deg,${C.saffron},${C.tomato})`, borderRadius: 99, transition: 'width 1s cubic-bezier(0.4,0,0.2,1)' }} />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', position: 'relative', zIndex: 1 }}>
+              {STEPS.map((step, i) => {
+                const done = i <= curStep
+                const active = i === curStep
+                return (
+                  <div key={step.key} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, flex: 1 }}>
+                    <div style={{ width: 32, height: 32, borderRadius: '50%', background: done ? `linear-gradient(135deg,${C.saffron},${C.tomato})` : C.sand, border: `3px solid ${done ? C.saffron : C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, transition: 'all 0.5s', boxShadow: active ? `0 0 0 4px ${C.saffron}30` : 'none', animation: active ? 'pulse 1.5s infinite' : 'none' }}>
+                      {done ? <span style={{ fontSize: 13 }}>{step.emoji}</span> : <span style={{ fontSize: 10, fontWeight: 800, color: C.muted }}>{i + 1}</span>}
+                    </div>
+                    <span style={{ fontSize: 9, fontWeight: 700, color: done ? C.saffron : C.muted, fontFamily: font, textAlign: 'center', lineHeight: 1.3, maxWidth: 48 }}>{step.label}</span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+        {tracking?.agent && (
+          <div style={{ background: C.cardBg, borderRadius: 18, padding: '18px', marginBottom: 14, border: `1px solid ${C.border}` }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: C.charcoal, fontFamily: font, marginBottom: 12 }}>Delivery Partner</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+              <div style={{ width: 52, height: 52, borderRadius: 16, background: `linear-gradient(135deg,${C.amber},${C.saffron})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, flexShrink: 0 }}>🧑‍🦱</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 15, fontWeight: 800, color: C.charcoal, fontFamily: font }}>{tracking.agent.full_name}</div>
+                <div style={{ fontSize: 11, color: C.muted, fontFamily: font, marginTop: 2 }}>🏍️ {tracking.agent.vehicle_type} · {tracking.agent.vehicle_number || 'On the way'}</div>
+              </div>
+            </div>
+          </div>
+        )}
+        <div style={{ background: C.cardBg, borderRadius: 18, padding: '18px', border: `1px solid ${C.border}` }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: C.charcoal, fontFamily: font, marginBottom: 12 }}>Order Summary</div>
+          {order.items?.map(item => (
+            <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid ${C.border}` }}>
+              <span style={{ fontSize: 12, color: C.charcoal, fontFamily: font }}>{item.quantity}× {item.name}</span>
+              <span style={{ fontSize: 12, color: C.mocha, fontFamily: font, fontWeight: 600 }}>₹{Number(item.price_at_purchase * item.quantity).toFixed(0)}</span>
+            </div>
+          ))}
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10 }}>
+            <span style={{ fontSize: 14, fontWeight: 800, color: C.charcoal, fontFamily: font }}>Total Paid</span>
+            <span style={{ fontSize: 14, fontWeight: 800, color: C.saffron, fontFamily: font }}>₹{Number(order.grand_total).toFixed(2)}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ── Orders List ─────────────────────────────────────────────── */
+function OrdersView({ orders, loading, onTrack }) {
+  const STATUS_COLORS = {
+    pending:          { bg: '#FFF8E6', color: '#D97706', label: 'Pending' },
+    confirmed:        { bg: '#EFF9ED', color: '#2E8B57', label: 'Confirmed' },
+    preparing:        { bg: '#FFF0E6', color: '#E8621A', label: 'Preparing' },
+    out_for_delivery: { bg: '#E8F4FF', color: '#2563EB', label: 'On the Way' },
+    delivered:        { bg: '#EFF9ED', color: '#2E8B57', label: 'Delivered' },
+    cancelled:        { bg: '#FEF0F0', color: '#DC2626', label: 'Cancelled' },
+  }
+  return (
+    <div style={{ padding: '16px' }}>
+      <div style={{ fontSize: 16, fontWeight: 800, color: C.charcoal, fontFamily: font, marginBottom: 16 }}>Your Orders</div>
+      {loading ? [...Array(3)].map((_, i) => <Skel key={i} h={110} r={16} mb={10} />)
+        : orders.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '60px 0' }}>
+            <div style={{ fontSize: 52, marginBottom: 12 }}>📦</div>
+            <div style={{ fontSize: 14, color: C.muted, fontFamily: font }}>No orders yet</div>
+            <div style={{ fontSize: 12, color: C.muted, marginTop: 6, fontFamily: font }}>Your order history will appear here</div>
+          </div>
+        ) : orders.map(o => {
+          const stat = STATUS_COLORS[o.status] || STATUS_COLORS.pending
+          const active = ['pending', 'confirmed', 'preparing', 'out_for_delivery'].includes(o.status)
+          return (
+            <div key={o.id} style={{ background: C.cardBg, borderRadius: 16, padding: '14px', marginBottom: 10, border: `1px solid ${C.border}`, boxShadow: '0 2px 12px rgba(92,42,15,0.06)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: C.charcoal, fontFamily: font }}>{o.restaurant_name}</div>
+                  <div style={{ fontSize: 10, color: C.muted, fontFamily: font, marginTop: 2 }}>
+                    {new Date(o.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                  </div>
+                </div>
+                <div style={{ background: stat.bg, borderRadius: 8, padding: '4px 10px' }}>
+                  <span style={{ fontSize: 10, fontWeight: 800, color: stat.color, fontFamily: font }}>{stat.label}</span>
+                </div>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <span style={{ fontSize: 11, color: C.muted, fontFamily: font }}>{o.item_count} item{o.item_count !== 1 ? 's' : ''} · </span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: C.saffron, fontFamily: font }}>₹{Number(o.grand_total).toFixed(2)}</span>
+                </div>
+                {active && (
+                  <button onClick={() => onTrack(o)} style={{ background: `linear-gradient(135deg,${C.saffron},${C.tomato})`, border: 'none', borderRadius: 10, padding: '7px 14px', color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: font }}>
+                    Track Order 🛵
+                  </button>
+                )}
+              </div>
+            </div>
+          )
+        })
+      }
+    </div>
+  )
+}
+
+/* ── Notifications Panel ─────────────────────────────────────── */
+function NotifPanel({ notifs, loading, onClose, onMarkAll }) {
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 200 }}>
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(28,20,16,0.5)', backdropFilter: 'blur(4px)' }} />
+      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: 'min(320px, 90vw)', background: C.cardBg, display: 'flex', flexDirection: 'column' }}>
+        <div style={{ padding: '52px 20px 16px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: `linear-gradient(135deg,${C.saffron}15,${C.amber}10)` }}>
+          <div style={{ fontSize: 16, fontWeight: 800, color: C.charcoal, fontFamily: font }}>🔔 Notifications</div>
+          <button onClick={onMarkAll} style={{ background: 'none', border: 'none', color: C.saffron, fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: font }}>Mark all read</button>
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px' }}>
+          {loading ? [...Array(4)].map((_, i) => <Skel key={i} h={60} r={12} mb={8} />)
+            : notifs.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '40px 0' }}>
+                <div style={{ fontSize: 40, marginBottom: 8 }}>🔕</div>
+                <div style={{ fontSize: 13, color: C.muted, fontFamily: font }}>No notifications</div>
+              </div>
+            ) : notifs.map(n => (
+              <div key={n.id} style={{ padding: '12px', borderRadius: 12, background: n.is_read ? 'transparent' : `${C.saffron}08`, border: `1px solid ${n.is_read ? C.border : `${C.saffron}25`}`, marginBottom: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: C.charcoal, fontFamily: font, marginBottom: 3 }}>{n.title}</div>
+                <div style={{ fontSize: 11, color: C.muted, fontFamily: font, lineHeight: 1.4 }}>{n.body}</div>
+                <div style={{ fontSize: 10, color: C.muted, marginTop: 5, fontFamily: font }}>{new Date(n.created_at).toLocaleDateString()}</div>
+              </div>
+            ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ── Bottom Nav ──────────────────────────────────────────────── */
+const NAV_TABS = [
+  { id: 'home', emoji: '🏠', label: 'Home' },
+  { id: 'search', emoji: '🔍', label: 'Search' },
+  { id: 'orders', emoji: '📦', label: 'Orders' },
+  { id: 'profile', emoji: '👤', label: 'Profile' },
+]
+
+function BottomNav({ active, onChange }) {
+  return (
+    <div style={{ position: 'sticky', bottom: 0, background: C.cardBg, borderTop: `1px solid ${C.border}`, display: 'flex', padding: '8px 0 env(safe-area-inset-bottom,20px)', zIndex: 100, boxShadow: '0 -4px 20px rgba(92,42,15,0.08)' }}>
+      {NAV_TABS.map(t => (
+        <button key={t.id} onClick={() => onChange(t.id)}
+          style={{ flex: 1, background: 'none', border: 'none', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, padding: '4px 0', fontFamily: font }}>
+          <div style={{ width: 40, height: 36, borderRadius: 12, background: active === t.id ? `${C.saffron}15` : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}>
+            <span style={{ fontSize: 20 }}>{t.emoji}</span>
+          </div>
+          <span style={{ fontSize: 10, fontWeight: 700, color: active === t.id ? C.saffron : C.muted, transition: 'color 0.2s' }}>{t.label}</span>
+          {active === t.id && <div style={{ width: 16, height: 2.5, background: C.saffron, borderRadius: 99 }} />}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+/* ── Profile Sub View ─────────────────────────────────────────── */
+function ProfileSubView({ section, onClose, user }) {
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    setLoading(true)
+    let req = null
+    if (section === 'addresses') req = profileApi.getAddresses()
+    else if (section === 'payments') req = profileApi.getPaymentMethods()
+    else if (section === 'favorites') req = profileApi.getFavorites()
+    else if (section === 'offers') req = profileApi.getSavedOffers()
+    else if (section === 'settings') req = profileApi.getSettings()
+
+    if (req) {
+      req.then(r => setData(r.data?.data || r.data?.results || []))
+         .catch(() => setData([]))
+         .finally(() => setLoading(false))
+    } else {
+      setLoading(false)
+    }
+  }, [section])
+
+  const sectionTitles = {
+    addresses: '📍 Saved Addresses',
+    payments: '💳 Payment Methods',
+    favorites: '❤️ Favourites',
+    offers: '🏷️ Saved Offers',
+    settings: '⚙️ Settings',
+    support: '🆘 Help & Support'
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 300, background: C.bg, display: 'flex', flexDirection: 'column' }}>
+      <div style={{ padding: '52px 20px 16px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: 12, background: C.cardBg }}>
+        <button onClick={onClose} style={{ background: C.warm, border: `1px solid ${C.border}`, borderRadius: 10, width: 36, height: 36, cursor: 'pointer', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>←</button>
+        <div style={{ fontSize: 18, fontWeight: 800, color: C.charcoal, fontFamily: font }}>{sectionTitles[section]}</div>
+      </div>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '20px 16px' }}>
+        {loading ? [...Array(3)].map((_, i) => <Skel key={i} h={80} r={16} mb={12} />) : (
+          <>
+            {/* Render based on section */}
+            {section === 'addresses' && (
+              data?.length > 0 ? data.map(a => (
+                <div key={a.id} style={{ background: C.cardBg, borderRadius: 16, padding: '16px', marginBottom: 12, border: `1px solid ${C.border}` }}>
+                  <div style={{ fontSize: 14, fontWeight: 800, color: C.charcoal, fontFamily: font }}>{a.city}</div>
+                  <div style={{ fontSize: 12, color: C.muted, fontFamily: font, marginTop: 4 }}>{a.address}, {a.state} - {a.pincode}</div>
+                </div>
+              )) : <div style={{ textAlign: 'center', color: C.muted, padding: 40, fontFamily: font }}>No saved addresses</div>
+            )}
+            
+            {section === 'payments' && (
+              data?.length > 0 ? data.map(p => (
+                <div key={p.id} style={{ background: C.cardBg, borderRadius: 16, padding: '16px', marginBottom: 12, border: `1px solid ${C.border}` }}>
+                  <div style={{ fontSize: 14, fontWeight: 800, color: C.charcoal, fontFamily: font }}>{p.provider} ({p.method_type})</div>
+                  <div style={{ fontSize: 12, color: C.muted, fontFamily: font, marginTop: 4 }}>Last used: {new Date(p.updated_at).toLocaleDateString()}</div>
+                </div>
+              )) : <div style={{ textAlign: 'center', color: C.muted, padding: 40, fontFamily: font }}>No saved payment methods</div>
+            )}
+
+            {section === 'favorites' && (
+              data?.length > 0 ? data.map(f => (
+                <div key={f.id} style={{ background: C.cardBg, borderRadius: 16, padding: '16px', marginBottom: 12, border: `1px solid ${C.border}` }}>
+                  <div style={{ fontSize: 14, fontWeight: 800, color: C.charcoal, fontFamily: font }}>{f.restaurant?.name || 'Restaurant'}</div>
+                  <div style={{ fontSize: 12, color: C.muted, fontFamily: font, marginTop: 4 }}>Added on: {new Date(f.created_at).toLocaleDateString()}</div>
+                </div>
+              )) : <div style={{ textAlign: 'center', color: C.muted, padding: 40, fontFamily: font }}>No favorite restaurants yet</div>
+            )}
+
+            {section === 'offers' && (
+              data?.length > 0 ? data.map(o => (
+                <div key={o.id} style={{ background: `linear-gradient(135deg,${C.warm},#FFF0E0)`, borderRadius: 16, padding: '16px', marginBottom: 12, border: `1px dashed ${C.amber}` }}>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: C.saffron, fontFamily: font }}>{o.offer?.coupon_code}</div>
+                  <div style={{ fontSize: 12, color: C.charcoal, fontFamily: font, marginTop: 4 }}>{o.offer?.title}</div>
+                </div>
+              )) : <div style={{ textAlign: 'center', color: C.muted, padding: 40, fontFamily: font }}>No saved offers</div>
+            )}
+
+            {section === 'settings' && (
+              <div style={{ background: C.cardBg, borderRadius: 16, border: `1px solid ${C.border}`, overflow: 'hidden' }}>
+                <div style={{ padding: '16px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: C.charcoal, fontFamily: font }}>Push Notifications</div>
+                    <div style={{ fontSize: 11, color: C.muted, fontFamily: font }}>Receive order updates</div>
+                  </div>
+                  <div style={{ width: 44, height: 24, background: data?.notifications_enabled ? C.saffron : C.sand, borderRadius: 99, position: 'relative' }}>
+                    <div style={{ position: 'absolute', top: 2, left: data?.notifications_enabled ? 22 : 2, width: 20, height: 20, background: '#fff', borderRadius: '50%', transition: 'left 0.2s' }} />
+                  </div>
+                </div>
+                <div style={{ padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: C.charcoal, fontFamily: font }}>Dark Mode</div>
+                    <div style={{ fontSize: 11, color: C.muted, fontFamily: font }}>Dark app appearance</div>
+                  </div>
+                  <div style={{ width: 44, height: 24, background: data?.dark_mode ? C.saffron : C.sand, borderRadius: 99, position: 'relative' }}>
+                    <div style={{ position: 'absolute', top: 2, left: data?.dark_mode ? 22 : 2, width: 20, height: 20, background: '#fff', borderRadius: '50%', transition: 'left 0.2s' }} />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {section === 'support' && (
+              <div style={{ textAlign: 'center', color: C.muted, padding: 40, fontFamily: font }}>Help & Support Center<br/>(Coming Soon)</div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/* ── Profile View ────────────────────────────────────────────── */
+function ProfileView({ user, onLogout, onSectionClick }) {
+  const items = [
+    { id: 'orders', emoji: '📦', label: 'My Orders', sub: 'Track and reorder' },
+    { id: 'addresses', emoji: '📍', label: 'Saved Addresses', sub: 'Home, work & more' },
+    { id: 'payments', emoji: '💳', label: 'Payment Methods', sub: 'Cards and wallets' },
+    { id: 'favorites', emoji: '❤️', label: 'Favourites', sub: 'Saved restaurants' },
+    { id: 'offers', emoji: '🏷️', label: 'Offers & Coupons', sub: 'Your saved deals' },
+    { id: 'settings', emoji: '⚙️', label: 'Settings', sub: 'App preferences' },
+    { id: 'support', emoji: '🆘', label: 'Help & Support', sub: 'FAQs and chat' },
+  ]
+  return (
+    <div style={{ padding: '20px 16px' }}>
+      <div style={{ background: `linear-gradient(135deg,${C.saffron},${C.tomato})`, borderRadius: 20, padding: '24px', marginBottom: 16, position: 'relative', overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', top: -20, right: -20, width: 100, height: 100, background: 'rgba(255,255,255,0.1)', borderRadius: '50%' }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{ width: 60, height: 60, borderRadius: 18, background: 'rgba(255,255,255,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, flexShrink: 0 }}>
+            {user?.full_name?.[0]?.toUpperCase() || '👤'}
+          </div>
+          <div>
+            <div style={{ fontSize: 18, fontWeight: 900, color: '#fff', fontFamily: font }}>{user?.full_name || 'Foodie'}</div>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.85)', fontFamily: font, marginTop: 2 }}>{user?.mobile_number}</div>
+          </div>
+        </div>
+      </div>
+      <div style={{ background: C.cardBg, borderRadius: 18, overflow: 'hidden', border: `1px solid ${C.border}`, marginBottom: 16 }}>
+        {items.map((item, i) => (
+          <button key={i} onClick={() => onSectionClick(item.id)} style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', borderBottom: i < items.length - 1 ? `1px solid ${C.border}` : 'none', fontFamily: font }}>
+            <div style={{ width: 38, height: 38, borderRadius: 12, background: C.warm, border: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>{item.emoji}</div>
+            <div style={{ flex: 1, textAlign: 'left' }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: C.charcoal }}>{item.label}</div>
+              <div style={{ fontSize: 11, color: C.muted, marginTop: 1 }}>{item.sub}</div>
+            </div>
+            <span style={{ color: C.muted, fontSize: 14 }}>›</span>
+          </button>
+        ))}
+      </div>
+      <button onClick={onLogout} style={{ width: '100%', background: C.warm, border: `1.5px solid ${C.border}`, borderRadius: 14, padding: '14px', cursor: 'pointer', fontSize: 13, fontWeight: 700, color: C.tomato, fontFamily: font, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+        🚪 Sign Out
+      </button>
+    </div>
+  )
+}
+
+/* ── Search Results ──────────────────────────────────────────── */
+function SearchResultsView({ query, results, loading, onRestaurant }) {
+  return (
+    <div style={{ padding: '16px' }}>
+      <div style={{ fontSize: 13, color: C.muted, fontFamily: font, marginBottom: 14 }}>
+        {loading ? `Searching for "${query}"...` : `${(results?.total_restaurants || 0) + (results?.total_menu_items || 0)} results for "${query}"`}
+      </div>
+      {loading ? [...Array(3)].map((_, i) => <Skel key={i} h={120} r={16} mb={10} />) : (
+        <>
+          {results?.restaurants?.length > 0 && (
+            <>
+              <div style={{ fontSize: 13, fontWeight: 800, color: C.charcoal, fontFamily: font, marginBottom: 10 }}>Restaurants</div>
+              {results.restaurants.map(r => <RestaurantCard key={r.id} r={r} onClick={onRestaurant} />)}
+            </>
+          )}
+          {results?.menu_items?.length > 0 && (
+            <>
+              <div style={{ fontSize: 13, fontWeight: 800, color: C.charcoal, fontFamily: font, margin: '16px 0 10px' }}>Dishes</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 10 }}>
+                {results.menu_items.map(item => (
+                  <div key={item.id} style={{ background: C.cardBg, borderRadius: 14, overflow: 'hidden', border: `1px solid ${C.border}` }}>
+                    <div style={{ height: 80, background: C.sand, overflow: 'hidden' }}>
+                      {item.image ? <img src={item.image} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32 }}>🍽️</div>}
+                    </div>
+                    <div style={{ padding: '8px 10px' }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: C.charcoal, fontFamily: font, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</div>
+                      <div style={{ fontSize: 11, color: C.saffron, fontWeight: 700, fontFamily: font, marginTop: 2 }}>₹{item.effective_price}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+          {results && results.total_restaurants === 0 && results.total_menu_items === 0 && (
+            <div style={{ textAlign: 'center', padding: '60px 0' }}>
+              <div style={{ fontSize: 48, marginBottom: 12 }}>🔍</div>
+              <div style={{ fontSize: 14, color: C.muted, fontFamily: font }}>No results found for "{query}"</div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+/* ══════════════════════════════════════════════════════════════
+   RAZORPAY INTEGRATION HELPER
+══════════════════════════════════════════════════════════════ */
+function loadRazorpayScript() {
+  return new Promise(resolve => {
+    if (window.Razorpay) { resolve(true); return }
+    const script = document.createElement('script')
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js'
+    script.onload = () => resolve(true)
+    script.onerror = () => resolve(false)
+    document.body.appendChild(script)
+  })
+}
+
+/* ══════════════════════════════════════════════════════════════
+   MAIN DASHBOARD
+══════════════════════════════════════════════════════════════ */
+export default function CraveHubDashboard() {
+  const { user, logout } = useAuthCtx()
+
+  /* Data state */
+  const [dashData, setDashData]   = useState(null)
+  const [loading, setLoading]     = useState(true)
+  const [cart, setCart]           = useState(null)
+  const [orders, setOrders]       = useState([])
+  const [ordersLoading, setOrdersLoading] = useState(false)
+  const [notifs, setNotifs]       = useState([])
+  const [notifsLoading, setNotifsLoading] = useState(false)
+  const [searchResults, setSearchResults] = useState(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchLoading, setSearchLoading] = useState(false)
+
+  /* UI state */
+  const [activeTab, setActiveTab] = useState('home')
+  const [activeProfileSection, setActiveProfileSection] = useState(null)
+  const [activeRestaurant, setActiveRestaurant] = useState(null)
+  const [cartOpen, setCartOpen]   = useState(false)
+  const [notifOpen, setNotifOpen] = useState(false)
+  const [aiOpen, setAiOpen]       = useState(false)
+  const [trackingOrder, setTrackingOrder] = useState(null)
+  const [cartLoading, setCartLoading]     = useState(false)
+  const [toast, setToast]         = useState(null)
+
+  const showToast = useCallback((msg, type = 'success') => {
+    setToast({ msg, type })
+    setTimeout(() => setToast(null), 3000)
+  }, [])
+
+  /* Load dashboard */
+  useEffect(() => {
+    dashboardApi.getHome()
+      .then(r => r.data?.success && setDashData(r.data.data))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  /* Load cart */
+  const loadCart = useCallback(() => {
+    dashboardApi.getCart()
+      .then(r => r.data?.success && setCart(r.data.data))
+      .catch(() => {})
+  }, [])
+  useEffect(() => { loadCart() }, [loadCart])
+
+  /* Tab effects */
+  useEffect(() => {
+    if (activeTab === 'orders' && orders.length === 0) {
+      setOrdersLoading(true)
+      dashboardApi.getOrders()
+        .then(r => r.data?.success && setOrders(r.data.data?.results || r.data.data || []))
+        .catch(() => {})
+        .finally(() => setOrdersLoading(false))
+    }
+  }, [activeTab])
+
+  const handleNotifOpen = () => {
+    setNotifOpen(true)
+    if (notifs.length === 0) {
+      setNotifsLoading(true)
+      dashboardApi.getNotifications()
+        .then(r => r.data?.success && setNotifs(r.data.data?.results || []))
+        .catch(() => {})
+        .finally(() => setNotifsLoading(false))
+    }
+  }
+
+  /* Cart actions */
+  const addToCart = async (itemId) => {
+    setCartLoading(true)
+    try {
+      await dashboardApi.addToCart({ menu_item_id: itemId, quantity: 1 })
+      await loadCart()
+      setCartOpen(true)
+    } catch (e) {
+      showToast('Failed to add to cart', 'error')
+    } finally { setCartLoading(false) }
+  }
+
+  const updateCartItem = async (id, qty) => {
+    try { await dashboardApi.updateCartItem(id, { quantity: qty }); await loadCart() } catch {}
+  }
+  const removeCartItem = async (id) => {
+    try { await dashboardApi.removeCartItem(id); await loadCart() } catch {}
+  }
+
+  /* Place order (COD) */
+  const placeOrder = async (paymentMethod = 'cod') => {
+    try {
+      const addr = dashData?.user?.address || user?.address || 'Default Address'
+      const res = await dashboardApi.placeOrder({ payment_method: paymentMethod, delivery_address: addr })
+      if (res.data?.success) {
+        setCartOpen(false)
+        await loadCart()
+        setOrders([])
+        setActiveTab('orders')
+        showToast('Order placed successfully! 🎉')
+        return res.data.data
+      }
+    } catch (e) {
+      showToast('Failed to place order', 'error')
+    }
+    return null
+  }
+
+  /* Razorpay payment */
+  const handleRazorpay = async () => {
+    try {
+      // 1. Place order with razorpay payment method
+      const addr = dashData?.user?.address || user?.address || 'Default Address'
+      const orderRes = await dashboardApi.placeOrder({ payment_method: 'razorpay', delivery_address: addr })
+      if (!orderRes.data?.success) { showToast('Failed to create order', 'error'); return }
+      const order = orderRes.data.data
+
+      // 2. Initiate payment
+      const payRes = await dashboardApi.initiatePayment({ order_id: order.id })
+      if (!payRes.data?.success) { showToast('Payment initiation failed', 'error'); return }
+      const payData = payRes.data.data
+
+      // 3. Load Razorpay SDK
+      const loaded = await loadRazorpayScript()
+      if (!loaded) { showToast('Razorpay SDK failed to load', 'error'); return }
+
+      // 4. Open Razorpay checkout
+      const options = {
+        key:        payData.key_id,
+        amount:     payData.amount,
+        currency:   payData.currency,
+        name:       'CraveHub',
+        description: `Order #${String(order.id).slice(0, 8).toUpperCase()}`,
+        order_id:   payData.razorpay_order_id,
+        prefill: {
+          name:    user?.full_name || '',
+          contact: user?.mobile_number || '',
+        },
+        theme: { color: '#E8621A' },
+        handler: async (response) => {
+          try {
+            const verifyRes = await dashboardApi.verifyPayment({
+              razorpay_order_id:   response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature:  response.razorpay_signature,
+            })
+            if (verifyRes.data?.success) {
+              setCartOpen(false)
+              await loadCart()
+              setOrders([])
+              setActiveTab('orders')
+              showToast('Payment successful! 🎉')
+            } else {
+              showToast('Payment verification failed', 'error')
+            }
+          } catch {
+            showToast('Payment verification error', 'error')
+          }
+        },
+        modal: {
+          ondismiss: () => showToast('Payment cancelled', 'error'),
+        },
+      }
+      const rzp = new window.Razorpay(options)
+      rzp.open()
+    } catch (e) {
+      showToast('Payment error: ' + (e?.response?.data?.message || e?.message || 'Unknown error'), 'error')
+    }
+  }
+
+  /* Search */
+  const handleSearch = async (q) => {
+    setSearchQuery(q)
+    setActiveTab('search')
+    setSearchLoading(true)
+    try {
+      const res = await dashboardApi.search(q)
+      res.data?.success && setSearchResults(res.data.data)
+    } catch {} finally { setSearchLoading(false) }
+  }
+
+  const sectors    = dashData?.sectors    || []
+  const categories = dashData?.categories || []
+  const banners    = dashData?.banners    || []
+  const offers     = dashData?.offers     || []
+  const featured   = dashData?.featured_restaurants || []
+  const trending   = dashData?.trending_restaurants || []
+  const allRests   = dashData?.all_restaurants || []
+  const notifCount = notifs.filter(n => !n.is_read).length
+
+  if (trackingOrder) {
+    return <TrackingView order={trackingOrder} onClose={() => setTrackingOrder(null)} />
+  }
+
+  return (
+    <div style={{ fontFamily: font, background: C.bg, minHeight: '100vh', display: 'flex', flexDirection: 'column', position: 'relative', maxWidth: 600, margin: '0 auto' }}>
+      <style>{`
+        @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+        @keyframes pulse { 0%,100%{box-shadow:0 0 0 0 rgba(232,98,26,0.4)} 50%{box-shadow:0 0 0 8px rgba(232,98,26,0)} }
+        @keyframes bounce { 0%,80%,100%{transform:scale(0)} 40%{transform:scale(1)} }
+        @keyframes slideUp { from{transform:translateY(20px);opacity:0} to{transform:translateY(0);opacity:1} }
+        @keyframes fadeIn { from{opacity:0} to{opacity:1} }
+        * { box-sizing: border-box; }
+        ::-webkit-scrollbar { display: none; }
+        button { font-family: ${font}; }
+        input { font-family: ${font}; }
+        @media (min-width: 640px) {
+          .rest-grid { display: grid !important; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+        }
+      `}</style>
+
+      {/* Toast */}
+      {toast && (
+        <div style={{
+          position: 'fixed', top: 60, left: '50%', transform: 'translateX(-50%)',
+          zIndex: 999, background: toast.type === 'error' ? '#D94F2B' : '#2E8B57',
+          color: '#fff', padding: '10px 20px', borderRadius: 12, fontSize: 13, fontWeight: 700,
+          fontFamily: font, boxShadow: '0 4px 20px rgba(0,0,0,0.2)', animation: 'slideUp 0.3s ease',
+          whiteSpace: 'nowrap',
+        }}>
+          {toast.type === 'error' ? '❌' : '✅'} {toast.msg}
+        </div>
+      )}
+
+      <Header
+        user={user || dashData?.user}
+        notifCount={notifCount}
+        cartCount={cart?.item_count || 0}
+        onNotif={handleNotifOpen}
+        onCart={() => setCartOpen(true)}
+        onAI={() => setAiOpen(true)}
+      />
+
+      {/* Main content */}
+      <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 80 }}>
+        <SearchBar onSearch={handleSearch} />
+
+        {/* Home tab */}
+        {activeTab === 'home' && (
+          <>
+            <BannerCarousel banners={banners} loading={loading} />
+            <div style={{ height: 8, background: C.bg }} />
+            <ServiceHub sectors={sectors} loading={loading} onService={(svc, route) => {
+              if (route === '/' || svc === 'Food Delivery') return
+              if (route) {
+                showToast(`Opening ${svc} UI... (Backend is ready!)`)
+              } else {
+                showToast(`${svc} is coming soon!`)
+              }
+            }} />
+            <div style={{ height: 8, background: C.bg }} />
+            <CategoryRow categories={categories} loading={loading} onSelect={(c) => handleSearch(c.name)} />
+            <div style={{ height: 8, background: C.bg }} />
+            <OfferStrip offers={offers} loading={loading} />
+            {offers.length > 0 && <div style={{ height: 8, background: C.bg }} />}
+            <MoodBar onMood={(m) => handleSearch(m.label)} />
+            <div style={{ height: 8, background: C.bg }} />
+
+            {/* Featured */}
+            {(loading || featured.length > 0) && (
+              <>
+                <Section>
+                  <SectionHead title="Featured Picks" sub="Handpicked today" emoji="⭐" />
+                  {loading
+                    ? <div style={{ display: 'flex', gap: 12, padding: '0 16px 16px', overflowX: 'auto' }}>{[...Array(3)].map((_, i) => <Skel key={i} w={188} h={220} r={18} />)}</div>
+                    : <div style={{ display: 'flex', gap: 12, padding: '0 16px 16px', overflowX: 'auto', scrollbarWidth: 'none' }}>
+                        {featured.map(r => <RestaurantCard key={r.id} r={r} compact onClick={() => setActiveRestaurant(r.id)} />)}
+                      </div>
+                  }
+                </Section>
+                <div style={{ height: 8, background: C.bg }} />
+              </>
+            )}
+
+            {/* Trending */}
+            {(loading || trending.length > 0) && (
+              <>
+                <Section>
+                  <SectionHead title="Trending Near You" sub="Most ordered right now" emoji="🔥" />
+                  {loading
+                    ? <div style={{ display: 'flex', gap: 12, padding: '0 16px 16px', overflowX: 'auto' }}>{[...Array(3)].map((_, i) => <Skel key={i} w={188} h={220} r={18} />)}</div>
+                    : <div style={{ display: 'flex', gap: 12, padding: '0 16px 16px', overflowX: 'auto', scrollbarWidth: 'none' }}>
+                        {trending.map(r => <RestaurantCard key={r.id} r={r} compact onClick={() => setActiveRestaurant(r.id)} />)}
+                      </div>
+                  }
+                </Section>
+                <div style={{ height: 8, background: C.bg }} />
+              </>
+            )}
+
+            {/* All restaurants */}
+            <Section style={{ padding: '0 16px 16px' }}>
+              <SectionHead title="All Restaurants" sub={loading ? '...' : `${allRests.length} available`} emoji="🍴" />
+              {loading
+                ? [...Array(4)].map((_, i) => <Skel key={i} h={200} r={18} mb={10} />)
+                : <div className="rest-grid">{allRests.map(r => <RestaurantCard key={r.id} r={r} onClick={() => setActiveRestaurant(r.id)} />)}</div>
+              }
+            </Section>
+          </>
+        )}
+
+        {/* Search tab */}
+        {activeTab === 'search' && (
+          <SearchResultsView query={searchQuery} results={searchResults} loading={searchLoading} onRestaurant={(r) => setActiveRestaurant(r.id)} />
+        )}
+
+        {/* Orders tab */}
+        {activeTab === 'orders' && (
+          <OrdersView orders={orders} loading={ordersLoading} onTrack={(o) => setTrackingOrder(o)} />
+        )}
+
+        {/* Profile tab */}
+        {activeTab === 'profile' && (
+          <ProfileView user={user || dashData?.user} onLogout={logout} onSectionClick={(sec) => {
+            if (sec === 'orders') setActiveTab('orders')
+            else setActiveProfileSection(sec)
+          }} />
+        )}
+      </div>
+
+      <BottomNav active={activeTab} onChange={setActiveTab} />
+
+      {/* Cart Drawer */}
+      <CartDrawer
+        open={cartOpen}
+        onClose={() => setCartOpen(false)}
+        cart={cart}
+        onUpdate={updateCartItem}
+        onRemove={removeCartItem}
+        onPlaceOrder={placeOrder}
+        onPayWithRazorpay={handleRazorpay}
+      />
+
+      {/* Notifications Panel */}
+      {notifOpen && (
+        <NotifPanel
+          notifs={notifs}
+          loading={notifsLoading}
+          onClose={() => setNotifOpen(false)}
+          onMarkAll={() => {
+            dashboardApi.markAllRead().catch(() => {})
+            setNotifs(prev => prev.map(n => ({ ...n, is_read: true })))
+          }}
+        />
+      )}
+
+      {/* AI Chat Panel */}
+      {aiOpen && <AIChatPanel onClose={() => setAiOpen(false)} />}
+
+      {/* Profile Sub View */}
+      {activeProfileSection && (
+        <ProfileSubView
+          section={activeProfileSection}
+          onClose={() => setActiveProfileSection(null)}
+          user={user || dashData?.user}
+        />
+      )}
+
+      {/* Restaurant View */}
+      {activeRestaurant && (
+        <RestaurantView 
+          restaurantId={activeRestaurant} 
+          onClose={() => setActiveRestaurant(null)} 
+          onAdd={addToCart} 
+        />
+      )}
+    </div>
+  )
+}
