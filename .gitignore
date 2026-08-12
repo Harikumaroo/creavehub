@@ -51,3 +51,5 @@ ehthumbs.db
 *.zip
 *.tar.gz
 samples for cravehub/
+backend/test_groq.py
+backend/test_openai_keys.py
