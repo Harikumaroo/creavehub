@@ -1,23 +1,31 @@
-version: '3.8'
-
 services:
-  frontend:
-    build:
-      context: ./frontend
-      target: dev
-    container_name: cravehub_frontend
-    ports:
-      - "5173:5173"
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
+  db:
+    image: postgres:16-alpine
+    container_name: cravehub_db
     environment:
-      - CHOKIDAR_USEPOLLING=true
-      - VITE_API_URL=http://localhost:8000
-    depends_on:
-      - backend
-    networks:
-      - cravehub_network
+      POSTGRES_DB: cravehub_db
+      POSTGRES_USER: cravehub_user
+      POSTGRES_PASSWORD: cravehub_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cravehub_user -d cravehub_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: cravehub_redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   backend:
     build:
@@ -28,44 +36,16 @@ services:
     volumes:
       - ./backend:/app
     environment:
-      - DEBUG=True
       - DATABASE_URL=postgres://cravehub_user:cravehub_pass@db:5432/cravehub_db
-      - REDIS_URL=redis://redis:6379/1
-      - GROQ_API_KEY=${GROQ_API_KEY}
+      - REDIS_URL=redis://redis:6379/0
+      - DEBUG=True
+      - SECRET_KEY=dev-only-insecure-secret-key-change-in-production
+      - ALLOWED_HOSTS=*
     depends_on:
-      - db
-      - redis
-    networks:
-      - cravehub_network
-    command: >
-      sh -c "python manage.py migrate &&
-             python manage.py runserver 0.0.0.0:8000"
-
-  db:
-    image: postgres:15-alpine
-    container_name: cravehub_db
-    environment:
-      - POSTGRES_DB=cravehub_db
-      - POSTGRES_USER=cravehub_user
-      - POSTGRES_PASSWORD=cravehub_pass
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - cravehub_network
-
-  redis:
-    image: redis:7-alpine
-    container_name: cravehub_redis
-    ports:
-      - "6379:6379"
-    networks:
-      - cravehub_network
-
-networks:
-  cravehub_network:
-    driver: bridge
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
 volumes:
   postgres_data:

@@ -146,7 +146,10 @@ else:
             "PASSWORD": os.environ.get("DB_PASSWORD", "root"),
             "HOST":     os.environ.get("DB_HOST",     "localhost"),
             "PORT":     os.environ.get("DB_PORT",     "5432"),
-            "OPTIONS":  {"connect_timeout": 10},
+            "OPTIONS":  {
+                "connect_timeout": 10,
+                "sslmode": os.environ.get("DB_SSLMODE", "prefer"),
+            },
             "CONN_MAX_AGE": 60,
         }
     }
@@ -293,12 +296,10 @@ DEFAULT_FROM_EMAIL  = os.environ.get("DEFAULT_FROM_EMAIL", "noreply@cravehub.loc
 
 # ── Channels ──────────────────────────────────────────────────
 if REDIS_URL:
-    from urllib.parse import urlparse
-    _url = urlparse(REDIS_URL)
     CHANNEL_LAYERS = {
         "default": {
             "BACKEND": "channels_redis.core.RedisChannelLayer",
-            "CONFIG":  {"hosts": [(_url.hostname or "127.0.0.1", int(_url.port or 6379))]},
+            "CONFIG":  {"hosts": [REDIS_URL]},
         }
     }
 else:
