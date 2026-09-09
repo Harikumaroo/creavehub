@@ -17,7 +17,7 @@ from django.conf import settings as dj_settings
 logger = logging.getLogger(__name__)
 from .utils import (
     generate_otp, hash_otp, get_otp_expiry,
-    verify_otp_hash, generate_device_id,
+    verify_otp_hash, generate_device_id, normalize_mobile,
 )
 import re
 from django.core.mail import EmailMessage
@@ -30,12 +30,15 @@ from django.core.mail import EmailMessage
 class OTPService:
 
     @staticmethod
-    def send_otp(mobile_number: str, purpose: str) -> dict:
+    def send_otp(mobile_number: str, purpose: str) -> tuple:
         """
         Generate + store OTP.
         Invalidate any previous unused OTPs for same mobile + purpose.
-        Returns plain OTP (to be sent via SMS gateway).
+        Sends OTP via configured SMS backend.
+        Returns tuple: (success: bool, message: str, data: dict)
         """
+        mobile_number = normalize_mobile(mobile_number)
+
         # Invalidate old OTPs
         OTP.objects.filter(
             mobile_number=mobile_number,
@@ -52,11 +55,14 @@ class OTPService:
         )
 
         # ── SMS Gateway Hook ──────────────────────────────────
-        sms_backend = getattr(dj_settings, "SMS_BACKEND", "console")
+        sms_backend = getattr(dj_settings, "SMS_BACKEND", "console").lower()
 
         if sms_backend == "console":
             logger.info(f"DEVELOPMENT MODE (Console): OTP for {mobile_number} is {plain_otp}")
-            return {"otp_id": str(otp_record.id)}
+            res_data = {"otp_id": str(otp_record.id)}
+            if getattr(dj_settings, "DEBUG", False):
+                res_data["debug_otp"] = plain_otp
+            return True, "OTP sent successfully (console mode).", res_data
 
         # ── Twilio SMS Gateway ────────────────────────────────
         twilio_sid = getattr(dj_settings, "TWILIO_ACCOUNT_SID", "")
@@ -64,7 +70,15 @@ class OTPService:
         twilio_from = getattr(dj_settings, "TWILIO_FROM_NUMBER", "")
         twilio_messaging_service_sid = getattr(dj_settings, "TWILIO_MESSAGING_SERVICE_SID", "")
 
-        if sms_backend == "twilio" and twilio_sid and twilio_token and (twilio_from or twilio_messaging_service_sid):
+        if sms_backend == "twilio":
+            if not (twilio_sid and twilio_token and (twilio_from or twilio_messaging_service_sid)):
+                err_msg = "Twilio credentials not configured. Please set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_FROM_NUMBER."
+                logger.error(err_msg)
+                if getattr(dj_settings, "DEBUG", False):
+                    logger.info(f"FALLBACK DEVELOPMENT MODE: OTP for {mobile_number} is {plain_otp}")
+                    return True, "OTP generated (DEBUG mode fallback).", {"otp_id": str(otp_record.id), "debug_otp": plain_otp}
+                return False, err_msg, {}
+
             try:
                 from twilio.rest import Client
                 client = Client(twilio_sid, twilio_token)
@@ -81,17 +95,22 @@ class OTPService:
                     
                 message = client.messages.create(**msg_kwargs)
                 logger.info(f"OTP sent to {mobile_number} via Twilio, SID: {message.sid}")
-            except Exception as e:
-                logger.error(f"Failed to send OTP via Twilio: {e}")
+                res_data = {"otp_id": str(otp_record.id)}
                 if getattr(dj_settings, "DEBUG", False):
-                    logger.info(f"FALLBACK DEVELOPMENT MODE: OTP for {mobile_number} is {plain_otp}")
+                    res_data["debug_otp"] = plain_otp
+                return True, "OTP sent successfully.", res_data
+            except Exception as e:
+                logger.error(f"Failed to send OTP via Twilio for {mobile_number}: {e}")
+                if getattr(dj_settings, "DEBUG", False):
+                    logger.info(f"FALLBACK DEVELOPMENT MODE: Twilio failed ({e}). OTP for {mobile_number} is {plain_otp}")
+                    return True, f"OTP generated (DEBUG mode fallback. Twilio error: {e}).", {"otp_id": str(otp_record.id), "debug_otp": plain_otp}
+                return False, f"Failed to send SMS via provider: {e}", {}
         else:
-            logger.warning("Twilio credentials not configured or SMS_BACKEND != twilio. OTP not sent to mobile.")
+            logger.warning(f"SMS_BACKEND is set to '{sms_backend}'. OTP not sent to mobile.")
             if getattr(dj_settings, "DEBUG", False):
                 logger.info(f"DEVELOPMENT MODE: OTP for {mobile_number} is {plain_otp}")
-        # ─────────────────────────────────────────────────────
-
-        return {"otp_id": str(otp_record.id)}
+                return True, "OTP generated (DEBUG mode fallback).", {"otp_id": str(otp_record.id), "debug_otp": plain_otp}
+            return False, f"Unsupported SMS_BACKEND '{sms_backend}'.", {}
 
     @staticmethod
     def verify_otp(mobile_number: str, plain_otp: str, purpose: str) -> tuple:
@@ -99,6 +118,7 @@ class OTPService:
         Validate OTP.
         Returns (success: bool, message: str, otp_record | None)
         """
+        mobile_number = normalize_mobile(mobile_number)
         try:
             otp = OTP.objects.filter(
                 mobile_number=mobile_number,
@@ -185,15 +205,16 @@ class RegistrationService:
     @staticmethod
     def initiate(mobile_number: str) -> tuple:
         """Step 1: Check if mobile is new, send OTP."""
+        mobile_number = normalize_mobile(mobile_number)
         if User.objects.filter(mobile_number=mobile_number).exists():
             return False, "Mobile number already registered.", {}
 
-        result = OTPService.send_otp(mobile_number, OTP.PURPOSE_REGISTER)
-        return True, "OTP sent successfully.", result
+        return OTPService.send_otp(mobile_number, OTP.PURPOSE_REGISTER)
 
     @staticmethod
     def verify_otp(mobile_number: str, plain_otp: str) -> tuple:
         """Step 2: Verify registration OTP."""
+        mobile_number = normalize_mobile(mobile_number)
         success, message, otp = OTPService.verify_otp(
             mobile_number, plain_otp, OTP.PURPOSE_REGISTER
         )
@@ -207,6 +228,7 @@ class RegistrationService:
         """
         Step 3: Create user account + device session + return tokens.
         """
+        mobile_number = normalize_mobile(mobile_number)
         # Confirm OTP was verified
         otp = OTP.objects.filter(
             mobile_number=mobile_number,
@@ -268,13 +290,13 @@ class LoginService:
     @staticmethod
     def initiate(mobile_number: str) -> tuple:
         """Step 1: Check user exists, send login OTP."""
+        mobile_number = normalize_mobile(mobile_number)
         try:
             User.objects.get(mobile_number=mobile_number)
         except User.DoesNotExist:
             return False, "User not registered. Please create an account.", {}
 
-        result = OTPService.send_otp(mobile_number, OTP.PURPOSE_LOGIN)
-        return True, "OTP sent successfully.", result
+        return OTPService.send_otp(mobile_number, OTP.PURPOSE_LOGIN)
 
     @staticmethod
     @transaction.atomic
