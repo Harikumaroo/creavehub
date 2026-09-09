@@ -26,3 +26,7 @@ services:
         sync: false
       - key: SECURE_SSL_REDIRECT
         value: "False"
+      - key: SMS_BACKEND
+        value: "console"
+      - key: DEBUG
+        value: "True"
