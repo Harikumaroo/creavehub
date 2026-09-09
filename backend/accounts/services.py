@@ -34,7 +34,8 @@ class OTPService:
         """
         Generate + store OTP.
         Invalidate any previous unused OTPs for same mobile + purpose.
-        Sends OTP via configured SMS backend.
+        OTP is always returned in the API response (shown on screen).
+        SMS via Twilio is completely disabled.
         Returns tuple: (success: bool, message: str, data: dict)
         """
         mobile_number = normalize_mobile(mobile_number)
@@ -54,63 +55,13 @@ class OTPService:
             expires_at=get_otp_expiry(),
         )
 
-        # ── SMS Gateway Hook ──────────────────────────────────
-        sms_backend = getattr(dj_settings, "SMS_BACKEND", "console").lower()
-
-        if sms_backend == "console":
-            logger.info(f"DEVELOPMENT MODE (Console): OTP for {mobile_number} is {plain_otp}")
-            res_data = {"otp_id": str(otp_record.id)}
-            if getattr(dj_settings, "DEBUG", False):
-                res_data["debug_otp"] = plain_otp
-            return True, "OTP sent successfully (console mode).", res_data
-
-        # ── Twilio SMS Gateway ────────────────────────────────
-        twilio_sid = getattr(dj_settings, "TWILIO_ACCOUNT_SID", "")
-        twilio_token = getattr(dj_settings, "TWILIO_AUTH_TOKEN", "")
-        twilio_from = getattr(dj_settings, "TWILIO_FROM_NUMBER", "")
-        twilio_messaging_service_sid = getattr(dj_settings, "TWILIO_MESSAGING_SERVICE_SID", "")
-
-        if sms_backend == "twilio":
-            if not (twilio_sid and twilio_token and (twilio_from or twilio_messaging_service_sid)):
-                err_msg = "Twilio credentials not configured. Please set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_FROM_NUMBER."
-                logger.error(err_msg)
-                if getattr(dj_settings, "DEBUG", False):
-                    logger.info(f"FALLBACK DEVELOPMENT MODE: OTP for {mobile_number} is {plain_otp}")
-                    return True, "OTP generated (DEBUG mode fallback).", {"otp_id": str(otp_record.id), "debug_otp": plain_otp}
-                return False, err_msg, {}
-
-            try:
-                from twilio.rest import Client
-                client = Client(twilio_sid, twilio_token)
-                
-                msg_kwargs = {
-                    "body": f"Your CraveHub OTP is {plain_otp}. It is valid for {dj_settings.OTP_EXPIRY_MINUTES} minutes.",
-                    "to": mobile_number
-                }
-                
-                if twilio_messaging_service_sid:
-                    msg_kwargs["messaging_service_sid"] = twilio_messaging_service_sid
-                else:
-                    msg_kwargs["from_"] = twilio_from
-                    
-                message = client.messages.create(**msg_kwargs)
-                logger.info(f"OTP sent to {mobile_number} via Twilio, SID: {message.sid}")
-                res_data = {"otp_id": str(otp_record.id)}
-                if getattr(dj_settings, "DEBUG", False):
-                    res_data["debug_otp"] = plain_otp
-                return True, "OTP sent successfully.", res_data
-            except Exception as e:
-                logger.error(f"Failed to send OTP via Twilio for {mobile_number}: {e}")
-                if getattr(dj_settings, "DEBUG", False):
-                    logger.info(f"FALLBACK DEVELOPMENT MODE: Twilio failed ({e}). OTP for {mobile_number} is {plain_otp}")
-                    return True, f"OTP generated (DEBUG mode fallback. Twilio error: {e}).", {"otp_id": str(otp_record.id), "debug_otp": plain_otp}
-                return False, f"Failed to send SMS via provider: {e}", {}
-        else:
-            logger.warning(f"SMS_BACKEND is set to '{sms_backend}'. OTP not sent to mobile.")
-            if getattr(dj_settings, "DEBUG", False):
-                logger.info(f"DEVELOPMENT MODE: OTP for {mobile_number} is {plain_otp}")
-                return True, "OTP generated (DEBUG mode fallback).", {"otp_id": str(otp_record.id), "debug_otp": plain_otp}
-            return False, f"Unsupported SMS_BACKEND '{sms_backend}'.", {}
+        # ── Always return OTP in response (shown on screen) ───
+        # Twilio SMS is disabled. OTP is printed on the OTP verification page.
+        logger.info(f"OTP for {mobile_number} ({purpose}): {plain_otp}")
+        return True, "OTP generated successfully.", {
+            "otp_id":    str(otp_record.id),
+            "debug_otp": plain_otp,
+        }
 
     @staticmethod
     def verify_otp(mobile_number: str, plain_otp: str, purpose: str) -> tuple:
