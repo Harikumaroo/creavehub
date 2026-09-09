@@ -49,12 +49,14 @@ export default function Login() {
     setLoading(true); setApiErr('')
     const mobile = `${country}${phone}`
     try {
-      await authApi.loginMobile(mobile)
+      const res = await authApi.loginMobile(mobile)
+      const debugOtp = res?.data?.data?.debug_otp
       navigate('/auth/otp', {
         state: {
           flow:   'login',
           mobile,
           display: formatMobileDisplay(country, phone),
+          debugOtp,
         },
       })
     } catch (err) {

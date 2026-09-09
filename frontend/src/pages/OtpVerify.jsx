@@ -75,6 +75,7 @@ export default function OtpVerify() {
   const [timer,     setTimer]     = useState(OTP_RESEND_SECONDS)
   const [canResend, setCanResend] = useState(false)
   const [resending, setResending] = useState(false)
+  const [debugOtp,  setDebugOtp]  = useState(state?.debugOtp || '')
   const timerRef = useRef(null)
 
   /* Redirect guard */
@@ -142,8 +143,11 @@ export default function OtpVerify() {
     if (!canResend || resending) return
     setResending(true); setError(''); setOtp('')
     try {
-      if (flow === 'login')    await authApi.loginMobile(mobile)
-      else                     await authApi.registerMobile(mobile)
+      let res
+      if (flow === 'login') res = await authApi.loginMobile(mobile)
+      else                  res = await authApi.registerMobile(mobile)
+      const newDebugOtp = res?.data?.data?.debug_otp
+      if (newDebugOtp) setDebugOtp(newDebugOtp)
       startTimer()
     } catch (err) {
       setError(extractError(err))
@@ -249,6 +253,47 @@ export default function OtpVerify() {
                 Change number
               </Link>
             </motion.div>
+
+            {/* Dev-mode OTP hint banner */}
+            {debugOtp && (
+              <motion.div
+                initial={{ opacity: 0, y: -8, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{ duration: 0.4, ease: [0.22,1,0.36,1] }}
+                className="mb-4 mx-auto w-full rounded-2xl overflow-hidden"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(251,191,36,0.08) 0%, rgba(245,137,58,0.10) 100%)',
+                  border: '1px solid rgba(251,191,36,0.28)',
+                  boxShadow: '0 0 28px rgba(251,191,36,0.07)',
+                }}
+              >
+                <div className="flex items-center gap-2 px-3.5 pt-3 pb-1.5"
+                  style={{ borderBottom: '1px solid rgba(251,191,36,0.15)' }}
+                >
+                  <span className="text-sm">🛠️</span>
+                  <span className="text-[0.65rem] font-bold tracking-[0.12em] uppercase"
+                    style={{ color: '#FBBF24' }}
+                  >
+                    Dev Mode — OTP Bypass
+                  </span>
+                </div>
+                <div className="flex items-center justify-between px-3.5 py-3">
+                  <span className="text-[0.75rem] text-muted font-medium">Your OTP is</span>
+                  <span
+                    className="font-extrabold text-[1.55rem] tracking-[0.22em] tabular-nums select-all"
+                    style={{
+                      fontFamily: "'Poppins',monospace",
+                      background: 'linear-gradient(90deg,#F5893A,#FBBF24)',
+                      WebkitBackgroundClip: 'text',
+                      WebkitTextFillColor: 'transparent',
+                      letterSpacing: '0.2em',
+                    }}
+                  >
+                    {debugOtp}
+                  </span>
+                </div>
+              </motion.div>
+            )}
 
             {/* OTP boxes */}
             <OTPInput

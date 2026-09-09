@@ -58,7 +58,8 @@ export default function Register() {
     setLoading(true); setApiErr('')
     const mobile = `${country}${phone}`
     try {
-      await authApi.registerMobile(mobile)
+      const res = await authApi.registerMobile(mobile)
+      const debugOtp = res?.data?.data?.debug_otp
       navigate('/auth/otp', {
         state: {
           flow:      'register',
@@ -67,6 +68,7 @@ export default function Register() {
           firstName: firstName.trim(),
           lastName:  lastName.trim(),
           email:     email.trim(),
+          debugOtp,
         },
       })
     } catch (err) {
